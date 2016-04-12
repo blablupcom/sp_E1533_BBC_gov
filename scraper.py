@@ -122,8 +122,9 @@ for row in data:
     valid = validate(filename, file_url, requestdata)
 
     if valid == True:
-        scraperwiki.sqlite.save(unique_keys=['f'], data={"l": file_url, "f": filename, "d": todays_date })
-        print filename
+        # scraperwiki.sqlite.save(unique_keys=['f'], data={"l": file_url, "f": filename, "d": todays_date })
+        # print filename
+        print 'the scraper needs POST requests to get the spending files'
     else:
         errors += 1
 
