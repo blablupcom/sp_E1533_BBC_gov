@@ -7,11 +7,11 @@ import re
 import scraperwiki
 import urllib2
 from datetime import datetime
+from dateutil.rrule import rrule, MONTHLY
 from bs4 import BeautifulSoup
 
 #### FUNCTIONS 1.2
-
-import requests    #  import requests to validate url
+import requests  # import requests to make a post request
 
 def validateFilename(filename):
     filenameregex = '^[a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+_[0-9][0-9][0-9][0-9]_[0-9QY][0-9]$'
@@ -37,14 +37,14 @@ def validateFilename(filename):
         return True
 
 
-def validateURL(url, requestdata):
+def validateURL(url, data_dict):
     try:
-        r = requests.post(url, data = requestdata, allow_redirects=True, timeout=20)
+        r = requests.post(url, data=data_dict)
         count = 1
         while r.status_code == 500 and count < 4:
             print ("Attempt {0} - Status code: {1}. Retrying.".format(count, r.status_code))
             count += 1
-            r = requests.post(url, data = requestdata, allow_redirects=True, timeout=20)
+            r = requests.post(url, data=data_dict)
         sourceFilename = r.headers.get('Content-Disposition')
 
         if sourceFilename:
@@ -59,9 +59,9 @@ def validateURL(url, requestdata):
         return False, False
 
 
-def validate(filename, file_url, requestdata):
+def validate(filename, file_url, data_dict):
     validFilename = validateFilename(filename)
-    validURL, validFiletype = validateURL(file_url, requestdata)
+    validURL, validFiletype = validateURL(file_url, data_dict)
     if not validFilename:
         print filename, "*Error: Invalid filename*"
         print file_url
@@ -83,72 +83,71 @@ def convert_mth_strings ( mth_string ):
         mth_string = mth_string.replace(k, v)
     return mth_string
 
+
 #### VARIABLES 1.0
 
-entity_id = "E4303_SHMBC_gov"
-urls = ["https://secure.sthelens.net/servlet/localtransparency/LocalTransparency", "https://secure.sthelens.net/servlet/localtransparency/PreviousYears"]
+entity_id = "E1533_BBC_gov"
+url = "http://opendata.brentwood.gov.uk/View/finance/payments-to-suppliers"
 errors = 0
 data = []
-url="http://example.com"
+start_date = datetime(2014,1,1).strftime('%d/%m/%Y')
+end_date = datetime.now().strftime('%d/%m/%Y')
+user_agent = {'User-agent': 'Mozilla/5.0'}
+data_dict = {"OrderByColumn":"[DatePaid]",
+"OrderByDirection":"DESC",
+"Download":"csv",
+"radio":"on",
+"chartType":"table",
+"filter[0].ColumnToSearch":"DatePaid",
+"filter[0].SearchOperator":"contains",
+"filter[0].SearchText":"",
+"filter[0].SearchOperatorNumber":"greaterthan",
+"filter[0].SearchNumber":"",
+"filter[0].From":"{}".format(start_date),
+"filter[0].To":"{}".format(end_date),
+"VisibleColumns":"1_DatePaid",
+"VisibleColumns":"2_ExpensesType",
+"VisibleColumns":"5_NetAmount",
+"VisibleColumns":"8_Service",
+"getVisualisationData":"false",
+"xAxis":"Text#ServiceArea",
+"yAxis":"Currency#NetAmount",
+"yAxisAggregate":"sum",
+"chartCurrentPage":"1",
+"chartNumberToShow":"10",
+"numberToShow":"10",
+"CurrentPage":"1",
+"PageNumber":""}
 
 #### READ HTML 1.0
 
 html = urllib2.urlopen(url)
 soup = BeautifulSoup(html, 'lxml')
 
-
 #### SCRAPE DATA
-for url in urls:
-    if 'PreviousYears' not in url:
-        html = urllib2.urlopen(url)
-        soup = BeautifulSoup(html, 'lxml')
-        blocks = soup.find('select', attrs = {'id':'Options'})
-        options = blocks.find_all('option' )
-        for option in options:
-            links = option['value']
-            if 'csv' in links:
-                csvMth = links[:3]
-                csvYr = links.split('.')[0][-4:]
-                csvMth = convert_mth_strings(csvMth.upper())
-                requestdata = {'Options':'{}'.format(links),
-                        'loadFile':'Load file',}
-                data.append([csvYr, csvMth, url, requestdata])
-    else:
-        html = urllib2.urlopen(url)
-        soup = BeautifulSoup(html, 'lxml')
-        years = soup.find('select', id="OptionsYear").find_all('option')
-        for year in years:
-            year = year['value']
-            year_html = urllib2.urlopen('https://secure.sthelens.net/servlet/localtransparency/PreviousYears?filter={}'.format(year))
-            year_soup = BeautifulSoup(year_html, 'lxml')
-            blocks = year_soup.find('select', attrs={'id': 'Options'})
-            options = blocks.find_all('option')
-            for option in options:
-                links = option['value']
-                if 'csv' in links:
-                    csvMth = links[:3]
-                    csvYr = links.split('.')[0][-4:]
-                    csvMth = convert_mth_strings(csvMth.upper())
-                    requestdata = {'OptionsYear':year, 'Options':'{}'.format(links),
-                                   'loadFile':'Load file'}
-                    data.append([csvYr, csvMth, url, requestdata])
 
+download_link = "http://opendata.brentwood.gov.uk/View/finance/payments-to-suppliers"
+csvMth = 'Y1'
+csvYr = datetime.now().strftime('%Y')
+link = soup.find('a', id='downloadData')
+if link:
+   csvMth = convert_mth_strings(csvMth.upper())
+   data.append([csvYr, csvMth, download_link, data_dict])
 
 
 #### STORE DATA 1.0
 
 for row in data:
-    csvYr, csvMth, url, requestdata = row
+    csvYr, csvMth, url, data_dict = row
     filename = entity_id + "_" + csvYr + "_" + csvMth
     todays_date = str(datetime.now())
     file_url = url.strip()
 
-    valid = validate(filename, file_url, requestdata)
+    valid = validate(filename, file_url, data_dict)
 
     if valid == True:
-        scraperwiki.sqlite.save(unique_keys=['f'], data={"l": file_url, "f": filename, "d": todays_date })
-        # print filename
-        print 'the scraper needs POST requests to get the spending files'
+        scraperwiki.sqlite.save(unique_keys=['l'], data={"l": file_url, "f": filename, "d": todays_date })
+        print filename
     else:
         errors += 1
 
